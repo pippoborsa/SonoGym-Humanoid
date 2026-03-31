@@ -16,7 +16,8 @@ More generally, each folder in this repository should be merged with the folder 
 
 Download the additional humanoid assets from:
 
-`https://huggingface.co/datasets/Pippoborsa/SonoGym_Humanoid_assets/tree/main`  
+`https://huggingface.co/datasets/Pippoborsa/SonoGym_Humanoid_assets/tree/main`  (https://huggingface.co/datasets/Pippoborsa/SonoGym_Humanoid_assets/tree/main)
+
 Then place them inside:
 
 `SonoGym/source/spinal_surgery/spinal_surgery/assets/data`

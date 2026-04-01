@@ -7,10 +7,6 @@
 - Right arm: placeholder pose (edit later)
 - One DifferentialIKController object, reused for both arms each step
 
-Launch Isaac Sim first.
-
-Usage:
-  ./isaaclab.sh -p path/to/guided_surgery_mock_bimanual_switch_g1h1.py --num_envs 1
 """
 
 import argparse

@@ -8,10 +8,6 @@
 - Right arm: tracks a moving placeholder TIP target (base frame), converted to desired RIGHT wrist pose via fixed wrist->tip offset.
 - One Pink solve_ik call per step, with TWO FrameTasks in the SAME QP.
 
-Launch Isaac Sim first.
-
-Usage:
-  ./isaaclab.sh -p path/to/guided_surgery_mock_bimanual_pink_qp_g1h1.py --num_envs 1
 """
 
 from __future__ import annotations
@@ -92,10 +88,10 @@ class JointLimitFilter(logging.Filter):
         return True       # keep all other log records
 root_logger = logging.getLogger()  # this is the root logger
 root_logger.addFilter(JointLimitFilter())
+
 # -----------------------------------------------------------------------------
 # YAML scene config
 # -----------------------------------------------------------------------------
-
 scene_cfg = YAML().load(open(f"{PACKAGE_DIR}/scenes/cfgs/unitree_scene.yaml", "r"))
 sim_cfg = scene_cfg["sim"]
 motion_plan_cfg = scene_cfg["motion_planning"]
@@ -140,18 +136,6 @@ scale = 1.0 / float(label_res)
 robot_cfg = scene_cfg["robot"]
 robot_type = robot_cfg.get("type", "g1")  # default: g1
 
-if robot_type == "h1":
-    # esempio: sposta il paziente (modifica questi offset come ti serve)
-    patient_cfg["pos"] = [
-        float(patient_cfg["pos"][0]) + 0.0,   # x
-        float(patient_cfg["pos"][1]) + 0.0,   # y
-        float(patient_cfg["pos"][2]) + 0.0,   # z
-    ]
-    patient_cfg["euler_yxz"] = [    
-        float(patient_cfg["euler_yxz"][0]) + 0.0,   #
-        float(patient_cfg["euler_yxz"][1]) + 0.0,   #
-        float(patient_cfg["euler_yxz"][2]) + 0.0,   #
-    ]
 
 quat = R.from_euler("yxz", patient_cfg["euler_yxz"], degrees=True).as_quat()
 INIT_STATE_HUMAN = RigidObjectCfg.InitialStateCfg(
@@ -166,13 +150,11 @@ if robot_type == "g1":
     ROBOT_CFG: ArticulationCfg = G1_TOOLS_SURGERY_CFG.copy()
     ROBOT_CFG.prim_path = "/World/envs/env_.*/G1"
     ROBOT_KEY = "g1"
-    # TODO: set the URDF you actually use for Pink
     URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/g1/g1_body29_hand14.urdf"
 elif robot_type == "h1":
     ROBOT_CFG: ArticulationCfg = H12_TOOLS_SURGERY_CFG.copy()
     ROBOT_CFG.prim_path = "/World/envs/env_.*/H1"
     ROBOT_KEY = "h1"
-    # TODO: set the URDF you actually use for Pink
     URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/h1/h1_2_handless.urdf"
 else:
     raise ValueError(f"Unknown robot type in YAML: {robot_type!r} (expected 'g1' or 'h1').")
@@ -184,10 +166,11 @@ q_xyzw = R.from_euler("z", scene_cfg[robot_type]["yaw"], degrees=True).as_quat()
 q_wxyz = (q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2])  # xyzw → wxyz
 ROBOT_CFG.init_state.rot = q_wxyz
 
-ROBOT_HEIGHT = scene_cfg[robot_type]["height"]
-ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"]
+# scanning height (Wrist - ProbeTip offset)
+ROBOT_HEIGHT = scene_cfg[robot_type]["height"] 
+ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"] # scanning tolerance
 
-# Right tool: wrist -> tip
+# Right tool offset: wrist -> tip
 if robot_type == "g1":
     DRILL_TO_TIP_POS = np.array([0.305, 0.0, 0.0]).astype(np.float32)  # -0.135
 elif robot_type == "h1":
@@ -198,7 +181,7 @@ DRILL_TO_TIP_QUAT = np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]], dtype
 WRIST_TO_TIP_POS = torch.tensor(DRILL_TO_TIP_POS, dtype=torch.float32)  # (3,)
 WRIST_TO_TIP_QUAT_WXYZ = torch.tensor(DRILL_TO_TIP_QUAT, dtype=torch.float32)  # già wxyz
 
-TIP_ALONG_Z_M = 0.15   # meters along trajectory direction
+TIP_ALONG_Z_M = 0.15   # offset from target drilling depth
 
 IK_ENABLE = True
 PLOT_ENABLE = True
@@ -422,7 +405,6 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
 
         return q
 
-
     # Joint regex for each arm
     left_joint_pattern = rf"(torso_joint|waist_(pitch|roll|yaw)_joint|left_(shoulder|elbow|wrist)_.*)"
     right_joint_pattern = rf"(torso_joint|waist_(pitch|roll|yaw)_joint|right_(shoulder|elbow|wrist)_.*)"
@@ -436,17 +418,12 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
     right_entity_cfg.resolve(scene)
     right_ee_id = right_entity_cfg.body_ids[-1]
 
-    # -------------------------------------------------------------------------
-    # Manipulability logging (Yoshikawa) for drill (right) and US (left)
-    # -------------------------------------------------------------------------
 
+    # Manipulability logging (Yoshikawa) for drill (right) and US (left)
     # Keep the same naming used in your snippet (entity cfg aliases)
     robot_drill_entity_cfg = right_entity_cfg
     robot_us_entity_cfg = left_entity_cfg
 
-    # Jacobian indices: user snippet expects "*_jacobi_idx - 1"
-    # In IsaacLab/PhysX jacobians, the first index is typically the root.
-    # A practical mapping is to offset body_id by +1 and then subtract 1 in the slice.
     drill_ee_jacobi_idx = int(right_ee_id) + 1
     US_ee_jacobi_idx = int(left_ee_id) + 1
 
@@ -454,9 +431,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
     manipulability_drill_hist: list[torch.Tensor] = []
     manipulability_us_hist: list[torch.Tensor] = []
 
-    # -------------------------------------------------------------------------
     # Arm-only (probe) joint subset for pre-positioning (exclude waist/torso)
-    # -------------------------------------------------------------------------
     left_arm_only_pattern = rf"(torso_joint|left_(shoulder|elbow|wrist)_.*)"
     left_arm_only_entity_cfg = SceneEntityCfg(
         robot_name,
@@ -552,9 +527,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
     left_task: FrameTask | None = None
     right_task: FrameTask | None = None
 
-    # -------------------------------------------------------------------------
     # Pre-positioning: run first PRE_STEPS with LEFT arm only to reach US target
-    # -------------------------------------------------------------------------
     PRE_STEPS = 100
     pre_steps_left = 0  # set at reset
 
@@ -597,14 +570,12 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
     sim_time_acc = 0.0
     reset_T = float(args_cli.reset_seconds)
 
-    # ----------------------------
     # Full joint set for a single set_joint_position_target call
-    # Note: left includes waist joints; right is arm-only (as per your current patterns)
     full_joint_ids_list = sorted(set(left_entity_cfg.joint_ids + right_entity_cfg.joint_ids))
     full_joint_ids = torch.tensor(full_joint_ids_list, device=sim.device, dtype=torch.long)
 
 
-    print_wr = debug_print_waist_right_joints(robot, right_entity_cfg, left_entity_cfg,  every=60)  # ogni 60 step
+    print_wr = debug_print_waist_right_joints(robot, right_entity_cfg, left_entity_cfg,  every=60)  # every 60 step
 
 
     while simulation_app.is_running():
@@ -626,7 +597,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             world_to_human_pos = human_world_poses[:, 0:3]
             world_to_human_rot = human_world_poses[:, 3:7]
 
-            # same as robotic_US_guided_surgery.get_US_target_pose()
+            # same target transformations as robotic_US_guided_surgery.get_US_target_pose()
             vertebra_to_US_2d_pos = torch.tensor(
                 motion_plan_cfg["vertebra_to_US_2d_pos"], device=sim.device, dtype=torch.float32
             ).reshape(1, 2)
@@ -679,7 +650,6 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
                 right_ee_w[:, 3:7],
             )
             
-            # --- decide drill-axis sign once (keep same hemisphere as current tip) ---
             right_tip_pos_w0, right_tip_quat_w0 = combine_frame_transforms(
                 right_ee_w[:, 0:3], right_ee_w[:, 3:7],
                 wrist_to_tip_pos, wrist_to_tip_quat
@@ -704,9 +674,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             pre_task = FrameTask(frame=LEFT_EE_NAME, position_cost=10.0, orientation_cost=10.0)
             pre_steps_left = PRE_STEPS
 
-        # ---------------------------------------------------------------------
         # Pre-positioning phase: first PRE_STEPS steps -> move probe to target
-        # ---------------------------------------------------------------------
         if IK_ENABLE and pre_steps_left > 0:
             # human pose in WORLD
             human_world_poses = human.data.root_state_w
@@ -790,10 +758,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             sim_time_acc += sim_dt
             continue
 
-            # ---------------------------------------------------------
             # Visualize frames (WORLD)
-            # ---------------------------------------------------------
-        
         if step_i % 10 == 0:
             idx = torch.zeros(scene.num_envs, dtype=torch.long, device=sim.device)
             # 1) LEFT wrist (world)
@@ -966,9 +931,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             robot.set_joint_position_target(q_next_ctrl_t, joint_ids=full_joint_ids)
 
 
-        # ---------------------------------------------------------
         # Visualize frames (WORLD)
-        # ---------------------------------------------------------
         if step_i % 10 == 0:
             idx = torch.zeros(scene.num_envs, dtype=torch.long, device=sim.device)
             # 1) LEFT wrist (world)
@@ -1091,8 +1054,8 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             # IMPORTANT: index selection
             # In most IsaacLab builds: jacobians[:, body_id, :, dof_id]
             # So use right_ee_id / left_ee_id directly (no +1/-1).
-            drill_jac = jacobians[:, int(right_ee_id), :, robot_drill_entity_cfg.joint_ids]  # (N,6,nJ)
-            us_jac    = jacobians[:, int(left_ee_id),  :, robot_us_entity_cfg.joint_ids]     # (N,6,nJ)
+            drill_jac = jacobians[:, int(drill_ee_jacobi_idx), :, robot_drill_entity_cfg.joint_ids]  # (N,6,nJ)
+            us_jac    = jacobians[:, int(US_ee_jacobi_idx),  :, robot_us_entity_cfg.joint_ids]     # (N,6,nJ)
 
             # Rotate WORLD -> BASE for both linear and angular parts
             drill_jac[:, 0:3, :] = torch.bmm(base_rotmat, drill_jac[:, 0:3, :])

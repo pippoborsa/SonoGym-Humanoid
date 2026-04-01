@@ -2,11 +2,9 @@
 # Copyright...
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Spawn SonoGym scene with Unitree G1 + tools + IK controller.
-Launch Isaac Sim first.
-
-Usage:
-  ./isaaclab.sh -p path/to/unitree_scene_trials.py --num_envs 1
+"""
+Mock simulation to tune IK setup.
+Uses differential IK to track a fixed marker.
 """
 
 import argparse

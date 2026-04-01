@@ -2,8 +2,9 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-"""Spawn SonoGym scene with Unitree G1 (Pink IK controller, parallel envs).
-Launch Isaac Sim first.
+"""
+Mock simulations of the  US navigation task, randomly manuevering the probe on the body surface.
+Uses the Pink IK controller. Compatible with parallel envs
 """
 
 import argparse
@@ -65,6 +66,7 @@ import torch
 import time
 import logging
 
+# Filter out joint limit warnings from Pinocchio
 class JointLimitFilter(logging.Filter):
     """Filter out joint limit warnings on the root logger."""
     def filter(self, record: logging.LogRecord) -> bool:
@@ -78,7 +80,7 @@ root_logger = logging.getLogger()  # this is the root logger
 root_logger.addFilter(JointLimitFilter())
 
 
-########### Scene parameters from YAML (bed + patient) ##############
+# Scene parameters from YAML (bed + patient) 
 
 scene_cfg = YAML().load(open(f"{PACKAGE_DIR}/scenes/cfgs/unitree_scene.yaml", "r"))
 
@@ -145,18 +147,17 @@ q_xyzw = R.from_euler("z", scene_cfg[robot_type]["yaw"], degrees=True).as_quat()
 q_wxyz = (q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2])  # xyzw → wxyz
 ROBOT_CFG.init_state.rot = q_wxyz
 
-ROBOT_HEIGHT = scene_cfg[robot_type]["height"]
-ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"]
+# scanning height (Wrist - ProbeTip offset)
+ROBOT_HEIGHT = scene_cfg[robot_type]["height"] 
+ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"] # scanning tolerance
 
 # IK controller settings
 IK_ENABLE = True
 
-# NOTE: adjust the H1 URDF path to match your local asset layout.
 if robot_type == "g1":
     URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/g1/g1_body29_hand14.urdf"
 elif robot_type == "h1":
-    # TODO: replace this with the correct H1 URDF path if different
-    URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/h1/h1_body29_hand14.urdf"       # STILL NEED THIS ONE
+    URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/h1/h1_2_handless.urdf"   
 else:
     raise ValueError(f"Unsupported robot_type for URDF selection: {robot_type!r}")
 
@@ -305,7 +306,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
 
     # get US probe index
     SIDE = "left" if "left" in EE_LINK_NAME else ("right" if "right" in EE_LINK_NAME else None)
-    joint_pattern = rf"(waist_(pitch|roll|yaw)_joint|{SIDE}_(shoulder|elbow|wrist)_.*)" if SIDE else r".*"
+    joint_pattern = rf"(torso_joint|waist_(pitch|roll|yaw)_joint|{SIDE}_(shoulder|elbow|wrist)_.*)" if SIDE else r".*"
     robot_entity_cfg = SceneEntityCfg(ROBOT_KEY, joint_names=[joint_pattern], body_names=[EE_LINK_NAME])
     robot_entity_cfg.resolve(scene)
     US_ee_jacobi_idx = robot_entity_cfg.body_ids[-1] 

@@ -2,8 +2,9 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-"""Spawn SonoGym scene with Unitree G1 (no actions).
-Launch Isaac Sim first.
+"""
+Mock simulations of the  US navigation task, randomly manuevering the probe on the body surface.
+Uses the Pink IK controller. Compatible with a single env.
 """
 
 import argparse
@@ -60,7 +61,7 @@ import torch
 import matplotlib.pyplot as plt
 import time
            
-########### Scene parameters from YAML (bed + patient) ##############
+# Scene parameters from YAML (bed + patient)
 
 scene_cfg = YAML().load(open(f"{PACKAGE_DIR}/scenes/cfgs/unitree_scene.yaml", "r"))
 
@@ -126,18 +127,17 @@ q_xyzw = R.from_euler("z", scene_cfg[robot_type]["yaw"], degrees=True).as_quat()
 q_wxyz = (q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2])  # xyzw → wxyz
 ROBOT_CFG.init_state.rot = q_wxyz
 
-ROBOT_HEIGHT = scene_cfg[robot_type]["height"]
-ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"]
+# scanning height (Wrist - ProbeTip offset)
+ROBOT_HEIGHT = scene_cfg[robot_type]["height"] 
+ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"] # scanning tolerance
 
 # IK controller settings
 IK_ENABLE = True
 
-# NOTE: adjust the H1 URDF path to match your local asset layout.
 if robot_type == "g1":
     URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/g1/g1_body29_hand14.urdf"
 elif robot_type == "h1":
-    # TODO: replace this with the correct H1 URDF path if different
-    URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/h1/h1_body29_hand14.urdf"       # STILL NEED THIS ONE
+    URDF_PATH = f"{ASSETS_DATA_DIR}/unitree/robots/urdf/h1/h1_2_handless.urdf"   
 else:
     raise ValueError(f"Unsupported robot_type for URDF selection: {robot_type!r}")
 
@@ -351,12 +351,12 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             root_rot0  = root_state[:, 3:7].clone()
             human_root_pose = human.data.root_state_w.clone()
 
-            # joint names e pose di default
+            # joint names & pose default
             joint_names = list(robot.data.joint_names)
             default_pos = robot.data.default_joint_pos.clone()
             zero_vel    = robot.data.default_joint_vel.clone() * 0.0
 
-            # reset articolazione e applica il nuovo stato
+            # reset articulation and scene to initial pose
             robot.reset()
             robot.write_joint_state_to_sim(default_pos, zero_vel)
             scene.reset()

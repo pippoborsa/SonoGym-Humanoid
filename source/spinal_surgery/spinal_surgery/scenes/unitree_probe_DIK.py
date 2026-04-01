@@ -2,8 +2,9 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-"""Spawn SonoGym scene with Unitree G1 or H1 (no actions).
-Launch Isaac Sim first.
+"""
+Mock simulations of the  US navigation task, randomly manuevering the probe on the body surface.
+Uses the Differential IK controller.
 """
 
 import argparse
@@ -62,136 +63,7 @@ import time as pytime
 import matplotlib.pyplot as plt
 
 
-# -----------------------------
-# TRANSPARENCY (LAST ATTEMPT)
-# -----------------------------
-def apply_human_transparency_usd(
-    human_prim_path: str,
-    opacity: float = 0.15,
-    also_try_shader_inputs: bool = True,
-    verbose: bool = True,
-) -> None:
-    """
-    Make the human transparent by targeting *prototype geometry* when the human is instanceable.
-
-    Strategy:
-      1) If Human is an instance -> operate on prim.GetPrototype() (where the meshes live).
-      2) Set displayOpacity on ALL UsdGeom.Gprim found (most robust).
-      3) If Looks/DefaultMaterial exists, also set enable_opacity / opacity_constant on its shader.
-      4) Bind DefaultMaterial on the prototype root (optional but helps inheritance).
-    """
-    from pxr import Usd, UsdGeom, UsdShade, Vt
-    import omni.usd
-
-    stage = omni.usd.get_context().get_stage()
-    if stage is None:
-        raise RuntimeError("USD stage not available")
-
-    opacity = float(max(0.0, min(1.0, opacity)))
-
-    human_prim = stage.GetPrimAtPath(human_prim_path)
-    if not human_prim or not human_prim.IsValid():
-        raise ValueError(f"Human prim not found: {human_prim_path}")
-
-    target_root = human_prim
-    proto = None
-    if human_prim.IsInstance():
-        proto = human_prim.GetPrototype()
-        if proto and proto.IsValid():
-            target_root = proto
-            if verbose:
-                print(f"[INFO] Human is instanceable. Using prototype: {proto.GetPath()}")
-        else:
-            if verbose:
-                print("[WARN] Human is instanceable but prototype invalid. Falling back to instance root.")
-
-    # 1) displayOpacity on prototype geometry
-    op_val = Vt.FloatArray([opacity])
-    n_gprim = 0
-    for p in Usd.PrimRange(target_root):
-        gp = UsdGeom.Gprim(p)
-        if gp and gp.GetPrim().IsValid():
-            attr = gp.GetDisplayOpacityAttr()
-            if not attr or not attr.IsValid():
-                attr = gp.CreateDisplayOpacityAttr()
-            attr.Set(op_val)
-            n_gprim += 1
-
-    if verbose:
-        print(f"[INFO] Set displayOpacity={opacity:.2f} on {n_gprim} Gprim(s) under {target_root.GetPath()}")
-
-    # 2) Optionally: tweak shader inputs under Looks (on the INSTANCE path, because Looks lives there)
-    if also_try_shader_inputs:
-        looks = stage.GetPrimAtPath(human_prim_path + "/Looks")
-        if looks and looks.IsValid():
-            # try DefaultMaterial first (from your dump)
-            mat_path = human_prim_path + "/Looks/DefaultMaterial"
-            shader_path = mat_path + "/DefaultMaterial"
-            mat_prim = stage.GetPrimAtPath(mat_path)
-            sh_prim = stage.GetPrimAtPath(shader_path)
-
-            if mat_prim and mat_prim.IsValid() and sh_prim and sh_prim.IsValid():
-                shader = UsdShade.Shader(sh_prim)
-
-                def _set(name: str, value) -> bool:
-                    inp = shader.GetInput(name)
-                    if inp:
-                        inp.Set(value)
-                        return True
-                    return False
-
-                changed = False
-                changed |= _set("enable_opacity", 1.0)
-                changed |= _set("enable_opacity_texture", 0.0)
-                changed |= _set("opacity_constant", opacity)
-                _set("opacity_threshold", 0.0)
-                _set("opacity_mode", 0)  # best-effort
-
-                if verbose:
-                    if changed:
-                        print(f"[INFO] Tweaked shader opacity inputs on {shader_path}")
-                    else:
-                        print(f"[WARN] Could not tweak shader opacity inputs on {shader_path}")
-
-                # 3) bind DefaultMaterial to prototype root (helps inheritance if bindings are missing)
-                try:
-                    material = UsdShade.Material(mat_prim)
-                    UsdShade.MaterialBindingAPI(target_root).Bind(material)
-                    if verbose:
-                        print(f"[INFO] Bound {mat_path} to {target_root.GetPath()}")
-                except Exception as e:
-                    if verbose:
-                        print(f"[WARN] Material bind failed: {e}")
-            else:
-                if verbose:
-                    print("[WARN] DefaultMaterial prim/shader not found; skipping shader tweak.")
-        else:
-            if verbose:
-                print("[WARN] Looks not found; skipping shader tweak.")
-
-
-def wait_and_apply_transparency(
-    sim: SimulationContext,
-    scene: InteractiveScene,
-    num_envs: int,
-    opacity: float = 0.15,
-    warmup_steps: int = 3,
-):
-    """Wait a few sim frames so referenced/instanced prims are fully realized, then apply transparency."""
-    sim_dt = sim.get_physics_dt()
-    # warmup frames
-    for _ in range(warmup_steps):
-        scene.write_data_to_sim()
-        sim.step()
-        scene.update(sim_dt)
-
-    for i in range(num_envs):
-        apply_human_transparency_usd(f"/World/envs/env_{i}/Human", opacity=opacity, verbose=True)
-
-
-# -----------------------------
 # YAML + scene cfg
-# -----------------------------
 scene_cfg = YAML().load(open(f"{PACKAGE_DIR}/scenes/cfgs/unitree_scene.yaml", "r"))
 
 # patient pose
@@ -249,8 +121,9 @@ q_xyzw = R.from_euler("z", scene_cfg[robot_type]["yaw"], degrees=True).as_quat()
 q_wxyz = (q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2])
 ROBOT_CFG.init_state.rot = q_wxyz
 
-ROBOT_HEIGHT = scene_cfg[robot_type]["height"] + 0.1
-ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"] + 0.1 
+# scanning height (Wrist - ProbeTip offset)
+ROBOT_HEIGHT = scene_cfg[robot_type]["height"] 
+ROBOT_HEIGHT_IMG = scene_cfg[robot_type]["height_img"] # scanning tolerance
 
 IK_ENABLE = True
 
@@ -324,15 +197,14 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
     robot = scene[ROBOT_KEY]
     human = scene["human"]
 
-
-
-    SIDE = "left" if "left" in EE_LINK_NAME else ("right" if "right" in EE_LINK_NAME else None)
+    SIDE = "left" if "left" in EE_LINK_NAME else ("right" if "right" in EE_LINK_NAME else None) # probe side
     joint_pattern = rf"(torso_joint|waist_(pitch|roll|yaw)_joint|{SIDE}_(shoulder|elbow|wrist)_.*)"
 
     robot_entity_cfg = SceneEntityCfg(ROBOT_KEY, joint_names=[joint_pattern], body_names=[EE_LINK_NAME])
     robot_entity_cfg.resolve(scene)
     US_ee_jacobi_idx = robot_entity_cfg.body_ids[-1]
 
+    # US slicer setup
     label_convert_map = YAML().load(open(f"{PACKAGE_DIR}/lab/sensors/cfgs/label_conversion.yaml", "r"))
     us_cfg = YAML().load(open(f"{PACKAGE_DIR}/lab/sensors/cfgs/us_cfg.yaml", "r"))
     sim_cfg = scene_cfg["sim"]
@@ -355,9 +227,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
         visualize=sim_cfg["vis_seg_map"],
     )
 
-    # -----------------------------
     # FIXED PATIENT XZ TARGET (from YAML)
-    # -----------------------------
     if "patient_xz_target" not in sim_cfg:
         raise KeyError("Missing 'patient_xz_target' in scene_cfg['sim'] (YAML).")
 
@@ -371,7 +241,8 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
     fixed_xz_target = torch.tensor(_xz_tgt, device=sim.device, dtype=torch.float32).view(1, 3)
     fixed_xz_target = fixed_xz_target.expand(scene.num_envs, -1)
 
-    ik_params = {"lambda_val": 1e-1}
+    # IK controller setup
+    ik_params = {"lambda_val": 1e-1} # damping
     pose_diff_ik_cfg = DifferentialIKControllerCfg(
         command_type="pose",
         use_relative_mode=False,
@@ -393,12 +264,10 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
 
     while simulation_app.is_running():
         if step_i % sim_cfg["episode_length"] == 0:
+            
             robot.write_joint_state_to_sim(default_pos, zero_vel)
             robot.reset()
             scene.reset()
-
-            # IMPORTANT: apply AFTER reset + few warmup frames (so prototypes/instances are valid)
-            wait_and_apply_transparency(sim, scene, args_cli.num_envs, opacity=0.15, warmup_steps=3)
 
             # Hold current pose for IK
             base_w = robot.data.root_link_state_w[:, 0:7]
@@ -423,6 +292,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             base_w = robot.data.root_link_state_w[:, 0:7]
             ee_parent_w = robot.data.body_state_w[:, US_ee_jacobi_idx, 0:7]
 
+            # rotation matrix from EE frame to US slicer input frame
             R21 = np.array([[0.0, 0.0, 1.0],
                             [1.0, 0.0, 0.0],
                             [0.0, 1.0, 0.0]], dtype=float)
@@ -437,6 +307,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
                 scene.num_envs, -1, -1
             )
 
+            # rotate the EE pose into the US slicer input frame
             ee_rotmat_w = matrix_from_quat(ee_quat_w)
             us_rotmat_w = torch.bmm(ee_rotmat_w, RotMat_torch)
             ee_quat_w = quat_from_matrix(us_rotmat_w)
@@ -453,16 +324,19 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             # Keep a fixed target during the episode (no incremental updates)
             US_slicer.current_x_z_x_angle_cmd[:] = fixed_xz_target
 
+            # visualize US image
             US_slicer.slice_US(world_to_human_pos, world_to_human_rot, ee_pos_w, ee_quat_w)
             if sim_cfg["vis_us"]:
                 US_slicer.visualize(key="US", first_n=1)
             if sim_cfg["vis_seg_map"]:
                 US_slicer.update_plotter(world_to_human_pos, world_to_human_rot, ee_pos_w, ee_quat_w)
 
+            # convert the target US command (x, z, angle) into a world pose for the EE
             world_to_ee_target_pos, world_to_ee_target_rot = US_slicer.compute_world_ee_pose_from_cmd(
                 world_to_human_pos, world_to_human_rot
             )
 
+            # rotate the target EE pose from the US slicer input frame back to the robot's EE frame
             world_to_ee_target_xyz = torch.bmm(
                 matrix_from_quat(world_to_ee_target_rot[:, 0:4]),
                 RotMat_torch.transpose(1, 2),
@@ -480,6 +354,7 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
             base_to_ee_target_pose = torch.cat([base_to_ee_target_pos, base_to_ee_target_quat], dim=-1)
             pose_diff_ik_controller.set_command(base_to_ee_target_pose)
 
+            # rotate the Jacobian from the world frame into the robot's base frame
             US_jacobian = robot.root_physx_view.get_jacobians()[:, US_ee_jacobi_idx - 1, :, robot_entity_cfg.joint_ids]
             base_RotMat = matrix_from_quat(quat_inv(base_quat_w))
             US_jacobian[:, 0:3, :] = torch.bmm(base_RotMat, US_jacobian[:, 0:3, :])
@@ -493,12 +368,13 @@ def run(sim: SimulationContext, scene: InteractiveScene, label_map_list: list, c
                 joint_ids=torch.tensor(robot_entity_cfg.joint_ids, device=sim.device, dtype=torch.long),
             )
 
+        
         if step_i % 100 == 0:
+            # DEBUG
             jids = robot_entity_cfg.joint_ids
             q = robot.data.joint_pos[0, jids].detach().cpu().numpy()
             names = [robot.data.joint_names[i] for i in jids]
 
-            # Format as "name: +0.12" (%.2f)
             msg = " | ".join([f"{n}: {v:+.2f}" for n, v in zip(names, q)])
             print(f"[JOINTS step={step_i}] {msg}")
 

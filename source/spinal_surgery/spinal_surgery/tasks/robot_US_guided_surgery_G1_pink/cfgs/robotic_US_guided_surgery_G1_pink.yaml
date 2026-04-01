@@ -68,6 +68,6 @@ sim:
   vis_seg_map: False
   
 if_record_traj: True
-record_path: /recordings/robot_US_guided_surgery_G1_bm/
+record_path: /recordings/robot_US_guided_surgery_G1_pink/
 
 

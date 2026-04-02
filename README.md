@@ -12,7 +12,7 @@ Merge with:
 
 ```bash
 rsync -av /SonoGym-Humanoid-main/source/spinal_surgery/spinal_surgery/{Folder}/ /SonoGym/source/spinal_surgery/spinal_surgery/{Folder}
-'''
+```
 
 More generally, each folder in this repository should be merged with the folder having the same path inside `SonoGym`.
 

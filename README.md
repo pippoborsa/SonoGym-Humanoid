@@ -32,7 +32,9 @@ by merging the existing folder with the new one.
 ## Pink
 
 Download the pink IK library with:
-'conda install -c conda-forge pink'
+```bash
+conda install -c conda-forge pink'
+```
 
 The project was tested with Pink v3.4.0, although newer versions should also work.
 
@@ -48,7 +50,9 @@ The two task IDs, to be passed through the `--task` CLI argument, are:
 Use the corresponding task ID depending on whether you want to run the ultrasound navigation task or the ultrasound-guided surgery task.
 
 Example:
-''python workflows/skrl/train.py --task Isaac-Robot-US-Guidance-G1-v0 --headless''
+```bash
+python workflows/skrl/train.py --task Isaac-Robot-US-Guidance-G1-v0 --headless''
+```
 
 To run in headless mode, add the headless option to the command line. This disables rendering and is recommended for training, especially when using multiple environments.
 

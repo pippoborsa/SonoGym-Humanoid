@@ -1766,24 +1766,6 @@ class roboticUSGuidedSurgeryEnv(DirectRLEnv):
             env_ids = self.robot._ALL_INDICES
         super()._reset_idx(env_ids)
 
-        if self.sim_cfg.get("vis_us", False) and hasattr(self, "vertebra_viewer"):
-            env_ids_list = [int(e) for e in env_ids]
-            if 0 in env_ids_list:
-                self.vertebra_viewer.us_frame_idx = 0
-
-                curr_dir = self.vertebra_viewer.us_record_dir
-                base_dir = curr_dir.rstrip("/")
-
-                if "_" in base_dir and base_dir.split("_")[-1].isdigit():
-                    prefix = "_".join(base_dir.split("_")[:-1])
-                    ep_idx = int(base_dir.split("_")[-1]) + 1
-                else:
-                    prefix = base_dir
-                    ep_idx = 1
-
-                self.vertebra_viewer.us_record_dir = f"{prefix}_{ep_idx}"
-                os.makedirs(self.vertebra_viewer.us_record_dir, exist_ok=True)
-
         if hasattr(self, "total_rewards"):
             wandb.log({"total_rewards": self.total_rewards.mean().item()})
 

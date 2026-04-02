@@ -7,9 +7,11 @@ After completing the SonoGym installation, add the files from this repository in
 
 - `tools/...` → merge into `SonoGym/tools/...`
 - all folders under `source/spinal_surgery/spinal_surgery/...` → merge into the corresponding folders under `SonoGym/source/spinal_surgery/spinal_surgery/...`
-
+- 
 Merge with:
-'rsync -av /SonoGym-Humanoid-main/source/spinal_surgery/spinal_surgery/{Folder}/ /SonoGym/source/spinal_surgery/spinal_surgery/{Folder}'
+
+```bash
+rsync -av /SonoGym-Humanoid-main/source/spinal_surgery/spinal_surgery/{Folder}/ /SonoGym/source/spinal_surgery/spinal_surgery/{Folder}
 
 More generally, each folder in this repository should be merged with the folder having the same path inside `SonoGym`.
 

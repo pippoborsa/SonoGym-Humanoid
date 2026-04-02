@@ -28,6 +28,10 @@ Then place them inside:
 
 by merging the existing folder with the new one.
 
+```bash
+rsync -av unitree /SonoGym/source/spinal_surgery/spinal_surgery/assets
+```
+
 ## Pink
 
 Download the pink IK library with:

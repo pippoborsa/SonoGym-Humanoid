@@ -7,7 +7,7 @@ After completing the SonoGym installation, add the files from this repository in
 
 - `tools/...` → merge into `SonoGym/tools/...`
 - all folders under `source/spinal_surgery/spinal_surgery/...` → merge into the corresponding folders under `SonoGym/source/spinal_surgery/spinal_surgery/...`
-- 
+
 Merge with:
 
 ```bash

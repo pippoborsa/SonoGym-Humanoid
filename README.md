@@ -6,9 +6,10 @@ This project is built on top of the [SonoGym framework](https://github.com/SonoG
 After completing the SonoGym installation, add the files from this repository into the corresponding pre-existing folders of your local `SonoGym` directory. In particular:
 
 - `tools/...` → merge into `SonoGym/tools/...`
-- `source/spinal_surgery/spinal_surgery/tasks/...` → merge into `SonoGym/source/spinal_surgery/spinal_surgery/tasks/...`
-- `source/spinal_surgery/spinal_surgery/assets/...` → merge into `SonoGym/source/spinal_surgery/spinal_surgery/assets/...`
-- `source/spinal_surgery/spinal_surgery/scenes/...` → merge into `SonoGym/source/spinal_surgery/spinal_surgery/scenes/...`
+- all folders under `source/spinal_surgery/spinal_surgery/...` → merge into the corresponding folders under `SonoGym/source/spinal_surgery/spinal_surgery/...`
+
+Merge with:
+'rsync -av /SonoGym-Humanoid-main/source/spinal_surgery/spinal_surgery/{Folder}/ /SonoGym/source/spinal_surgery/spinal_surgery/{Folder}'
 
 More generally, each folder in this repository should be merged with the folder having the same path inside `SonoGym`.
 
@@ -23,6 +24,13 @@ Then place them inside:
 `SonoGym/source/spinal_surgery/spinal_surgery/assets/data`
 
 by merging the existing folder with the new one.
+
+## Pink
+
+Download the pink IK library with:
+'conda install -c conda-forge pink'
+
+The project was tested with Pink v3.4.0, although newer versions should also work.
 
 ## Training and Testing
 
